@@ -7,6 +7,7 @@ import { canonicalizeTourist } from '../utils/hash.js';
 import { asyncWrap } from '../utils/error.js';
 import { v4 as uuid } from 'uuid';
 import { sendTouristProfileCompletedEmail } from '../services/emailService.js';
+import { touristBlockchain } from '../blockchain/Blockchain.js';
 
 const router = express.Router();
 
@@ -20,7 +21,7 @@ router.post('/register', requireAuth, requireRole('tourist'), asyncWrap(async (r
 
   const body = req.body || {};
   
-  // Create a NEW profile each time (multi-card support)
+  
   const profile = new TouristProfile({ userId: user._id });
 
   Object.assign(profile, {
@@ -70,6 +71,25 @@ router.post('/register', requireAuth, requireRole('tourist'), asyncWrap(async (r
 
   await profile.save();
 
+  
+  const blockchainData = {
+    touristId: profile.touristId,
+    fullName: profile.fullName,
+    email: user.email,
+    touristType: profile.touristType,
+    country: profile.country,
+    passportNumber: profile.passportNumber,
+    aadhaarNumber: profile.aadhaarNumber,
+    checkInDate: profile.checkInDate,
+    checkOutDate: profile.checkOutDate,
+    idHash: profile.idHash,
+    timestamp: Date.now(),
+    action: 'CARD_CREATED'
+  };
+  
+  const block = touristBlockchain.addBlock(blockchainData);
+  console.log('✅ Tourist card added to blockchain:', block.hash);
+
   await sendTouristProfileCompletedEmail({ user, profile });
 
   return res.json({
@@ -77,12 +97,17 @@ router.post('/register', requireAuth, requireRole('tourist'), asyncWrap(async (r
     data: {
       touristId: profile.touristId,
       idHash: profile.idHash,
-      isRegistered: profile.isRegistered
+      isRegistered: profile.isRegistered,
+      blockchain: {
+        blockHash: block.hash,
+        blockIndex: block.index,
+        verified: true
+      }
     }
   });
 }));
 
-// Get all cards for logged-in tourist
+
 router.get('/me', requireAuth, requireRole('tourist'), asyncWrap(async (req, res) => {
   const profiles = await TouristProfile.find({ 
     userId: req.user.id, 
@@ -97,7 +122,7 @@ router.get('/me', requireAuth, requireRole('tourist'), asyncWrap(async (req, res
   res.json({ ok: true, data: { cards, isRegistered: true } });
 }));
 
-// Delete a specific card for the tourist
+
 router.delete('/me/:touristId', requireAuth, requireRole('tourist'), asyncWrap(async (req, res) => {
   const touristId = req.params.touristId;
   const profile = await TouristProfile.findOne({ 
@@ -116,7 +141,6 @@ router.delete('/me/:touristId', requireAuth, requireRole('tourist'), asyncWrap(a
   res.json({ ok: true, message: 'Card deleted successfully' });
 }));
 
-// Get all tourist cards (for authority)
 router.get('/cards', requireAuth, requireRole('authority'), asyncWrap(async (req, res) => {
   const search = req.query.search || '';
   const query = {};
@@ -157,7 +181,7 @@ router.get('/cards', requireAuth, requireRole('authority'), asyncWrap(async (req
   res.json({ ok: true, data: cards });
 }));
 
-// Delete tourist card (for authority)
+
 router.delete('/cards/:id', requireAuth, requireRole('authority'), asyncWrap(async (req, res) => {
   const touristId = req.params.id;
   const result = await TouristProfile.findOneAndDelete({ touristId });
@@ -167,6 +191,53 @@ router.delete('/cards/:id', requireAuth, requireRole('authority'), asyncWrap(asy
   }
   
   res.json({ ok: true, message: 'Tourist card removed successfully' });
+}));
+
+
+router.get('/verify/:touristId', asyncWrap(async (req, res) => {
+  const touristId = req.params.touristId;
+  
+
+  const verification = touristBlockchain.verifyTouristCard(touristId);
+  
+  if (!verification.verified) {
+    return res.status(404).json({
+      ok: false,
+      verified: false,
+      message: verification.message
+    });
+  }
+  
+  // Get from database
+  const profile = await TouristProfile.findOne({ touristId }).lean();
+  
+  res.json({
+    ok: true,
+    verified: true,
+    message: 'Tourist card is authentic and verified on blockchain',
+    data: {
+      touristId,
+      fullName: verification.block.data.fullName,
+      country: verification.block.data.country,
+      blockchainInfo: {
+        blockIndex: verification.blockIndex,
+        blockHash: verification.block.hash,
+        timestamp: verification.timestamp,
+        isChainValid: touristBlockchain.isChainValid()
+      },
+      profile
+    }
+  });
+}));
+
+// 🔗 BLOCKCHAIN STATS - Get blockchain statistics
+router.get('/blockchain/stats', requireAuth, requireRole('authority'), asyncWrap(async (req, res) => {
+  const stats = touristBlockchain.getStats();
+  
+  res.json({
+    ok: true,
+    data: stats
+  });
 }));
 
 export default router;

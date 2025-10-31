@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../Auth/AuthContext';
 import { 
   Shield, LayoutDashboard, Users, AlertTriangle, TrendingUp, FileText, CreditCard, Headphones,
-  LogOut, Bell, User, Edit 
+  LogOut, Bell, User, Edit, Link as LinkIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -38,6 +38,7 @@ const AuthorityLayout = () => {
     { path: '/authority/risk', icon: TrendingUp, label: 'Risk Assessment' },
     { path: '/authority/incidents', icon: FileText, label: 'Incident Management' },
     { path: '/authority/smart-id', icon: CreditCard, label: 'Smart ID System' },
+    { path: '/authority/blockchain', icon: LinkIcon, label: '🔗 Blockchain' },
     { path: '/authority/response-team', icon: Headphones, label: 'Response Team' },
     { path: '/authority/analytics', icon: TrendingUp, label: 'Analytics' },
   ];

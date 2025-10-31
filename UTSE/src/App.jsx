@@ -14,6 +14,7 @@ import IncidentManagement from './pages/Authority/IncidentManagement'
 import SmartIDSystem from './pages/Authority/SmartIDSystem'
 import ResponseTeam from './pages/Authority/ResponseTeam'
 import AuthorityAnalytics from './pages/Authority/Analytics'
+import BlockchainDashboard from './pages/Authority/BlockchainDashboard'
 
 // Tourist Pages
 import TouristLayout from './components/Layout/TouristLayout'
@@ -56,6 +57,7 @@ function App() {
               <Route path="analytics" element={<AuthorityAnalytics />} />
               <Route path="smart-id" element={<SmartIDSystem />} />
               <Route path="response-team" element={<ResponseTeam />} />
+              <Route path="blockchain" element={<BlockchainDashboard />} />
 
               
               <Route path="profile" element={<Profile />} />

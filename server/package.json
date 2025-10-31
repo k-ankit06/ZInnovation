@@ -2,7 +2,7 @@
   "name": "tourist-safety-backend",
   "private": true,
   "type": "module",
-   "scripts": {
+  "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "db:reset": "node scripts/dbReset.js"
@@ -11,6 +11,7 @@
     "axios": "^1.7.7",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
+    "crypto-js": "^4.2.0",
     "dotenv": "^16.4.5",
     "ethers": "^6.13.1",
     "express": "^4.19.2",

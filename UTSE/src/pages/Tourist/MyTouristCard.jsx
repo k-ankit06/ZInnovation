@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Download, QrCode, CheckCircle, Users, Plus, Trash2, Calendar } from 'lucide-react';
+import { Download, QrCode, CheckCircle, Users, Plus, Trash2, Calendar, Shield } from 'lucide-react';
 import QRCodeReact from 'qrcode.react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../components/Auth/AuthContext';
@@ -12,6 +12,7 @@ const MyTouristCard = () => {
   const [cards, setCards] = useState([]);
   const [selectedCard, setSelectedCard] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [blockchainVerified, setBlockchainVerified] = useState(null);
 
   // Fetch all tourist cards from backend
   const fetchCards = async () => {
@@ -37,6 +38,23 @@ const MyTouristCard = () => {
   useEffect(() => {
     fetchCards();
   }, []);
+
+  // 🔗 Verify card on blockchain when selected
+  useEffect(() => {
+    const verifyOnBlockchain = async () => {
+      if (!selectedCard?.touristId) return;
+      
+      try {
+        const { data } = await api.get(`/api/tourist/verify/${selectedCard.touristId}`);
+        setBlockchainVerified(data);
+      } catch (e) {
+        console.error('Blockchain verification failed:', e);
+        setBlockchainVerified(null);
+      }
+    };
+    
+    verifyOnBlockchain();
+  }, [selectedCard]);
 
   // Delete a card
   const handleDeleteCard = async (touristId) => {
@@ -239,6 +257,29 @@ const MyTouristCard = () => {
           <div className="flex items-center justify-center gap-2 bg-success-500 text-white px-4 py-3 rounded-lg font-bold shadow-lg">
             <CheckCircle className="h-6 w-6" /> VERIFIED - ACTIVE STATUS
           </div>
+
+          {/* 🔗 BLOCKCHAIN VERIFICATION BADGE */}
+          {blockchainVerified?.verified && (
+            <div className="mt-4 bg-gradient-to-r from-purple-500 to-blue-500 text-white px-4 py-3 rounded-lg">
+              <div className="flex items-center gap-3">
+                <Shield className="h-6 w-6" />
+                <div className="flex-1">
+                  <p className="font-bold text-sm">BLOCKCHAIN VERIFIED ✅</p>
+                  <p className="text-xs opacity-90">This card is secured on blockchain and tamper-proof</p>
+                </div>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-white/10 px-2 py-1 rounded">
+                  <p className="opacity-75">Block #</p>
+                  <p className="font-mono font-bold">{blockchainVerified?.data?.blockchainInfo?.blockIndex}</p>
+                </div>
+                <div className="bg-white/10 px-2 py-1 rounded">
+                  <p className="opacity-75">Block Hash</p>
+                  <p className="font-mono font-bold text-[10px]">{blockchainVerified?.data?.blockchainInfo?.blockHash?.substring(0, 12)}...</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="mt-4 flex gap-2">
             <button onClick={downloadQR} className="bg-white/20 hover:bg-white/30 backdrop-blur px-4 py-2 rounded-lg font-medium">
