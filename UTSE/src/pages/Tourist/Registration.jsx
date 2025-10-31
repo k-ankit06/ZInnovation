@@ -14,6 +14,8 @@ const TouristRegistration = () => {
   const [isAddingMember, setIsAddingMember] = useState(false)
   const [groupMembers, setGroupMembers] = useState([])
   const [error, setError] = useState('')
+  const [hasExistingCards, setHasExistingCards] = useState(false)
+  const [checkingCards, setCheckingCards] = useState(true)
 
   const initialFormState = {
     fullName: '',
@@ -57,6 +59,36 @@ const TouristRegistration = () => {
     touristType: user?.touristType || 'international',
     emergencyContactPhone: user?.emergencyContact || ''
   })
+
+  // Check if user has existing cards
+  useEffect(() => {
+    const checkExistingCards = async () => {
+      try {
+        setCheckingCards(true)
+        const { data } = await api.get('/api/tourist/me')
+        const cards = data?.data?.cards || []
+        
+        if (cards.length > 0) {
+          setHasExistingCards(true)
+          // Update user registration status
+          if (!user?.isRegistered) {
+            updateUser({ ...user, isRegistered: true })
+          }
+        } else {
+          setHasExistingCards(false)
+        }
+      } catch (e) {
+        console.error('Failed to check cards:', e)
+        setHasExistingCards(false)
+      } finally {
+        setCheckingCards(false)
+      }
+    }
+
+    if (user) {
+      checkExistingCards()
+    }
+  }, [user])
 
   // Prefill from localStorage (set at SignUp) on first load
   useEffect(() => {
@@ -206,15 +238,29 @@ const TouristRegistration = () => {
     await handleSubmit()
   }
 
-  if (user?.isRegistered) {
+  // Show loading while checking for existing cards
+  if (checkingCards) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className="card text-center">
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // If user has existing cards, show option to view or create new
+  if (hasExistingCards) {
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card text-center">
         <h2 className="text-2xl font-bold text-success-700">Welcome Back!</h2>
         <p className="text-gray-600 mt-2">You already have tourist cards. You can create a new card or view your existing cards.</p>
         <div className="flex flex-col sm:flex-row gap-3 mt-6 justify-center">
-          <Link to="/tourist/my-card" className="px-6 py-3 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700">View My Cards</Link>
+          <Link to="/tourist/my-card" className="px-6 py-3 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700">
+            View My Cards
+          </Link>
           <button 
-            onClick={() => window.location.reload()} 
+            onClick={() => setHasExistingCards(false)} 
             className="px-6 py-3 bg-success-600 text-white rounded-lg font-semibold hover:bg-success-700"
           >
             Create New Card

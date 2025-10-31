@@ -41,3 +41,46 @@ HTML:
     
 
 
+---
+Date: 2025-10-31T09:44:58.432Z
+From: "Tourist Safety System" <kumar.ak22ji@gmail.com>
+To: kumar.ak22ji@gmail.com
+Subject: New Tourist Registration Alert
+
+Text:
+
+
+HTML:
+
+      <h1>New Tourist Registration</h1>
+      <p>A new tourist has registered on the platform. Details:</p>
+      <ul>
+        <li><strong>Name:</strong> Dhruv</li>
+        <li><strong>Email:</strong> dhruv88528@gmail.com</li>
+        <li><strong>Role:</strong> tourist</li>
+        <li><strong>Tourist Type:</strong> domestic</li>
+        <li><strong>Country:</strong> India</li>
+      </ul>
+      <p><a href="http://localhost:3000/authority/dashboard">Open Authority Dashboard</a></p>
+    
+
+
+---
+Date: 2025-10-31T09:45:36.583Z
+From: "Tourist Safety System" <kumar.ak22ji@gmail.com>
+To: dhruv88528@gmail.com
+Subject: Profile Completed Successfully
+
+Text:
+
+
+HTML:
+
+      <h1>Profile Completed Successfully</h1>
+      <p>Hi Dhruv,</p>
+      <p>Your Smart Tourist Profile has been completed successfully.</p>
+      <p><strong>Tourist ID:</strong> TID-936579-AC44</p>
+      <p><a href="http://localhost:3000/tourist/my-card">Open My Tourist Card</a></p>
+    
+
+
