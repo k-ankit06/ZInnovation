@@ -120,31 +120,48 @@ const TouristMonitoring = () => {
     }
   };
 
-  const handleSendAlert = (tourist) => {
-    const confirmAlert = window.confirm(`Send safety alert to ${tourist.fullName}?\n\nThis will mark them as UNSAFE and notify them immediately.`);
+  const handleSendAlert = async (tourist) => {
+    const confirmAlert = window.confirm(`Send safety alert to ${tourist.fullName}?\n\nThis will mark them as UNSAFE and notify them immediately via email and dashboard.`);
     if (!confirmAlert) return;
 
-    // Update tourist status to 'warning' (unsafe)
-    setTourists(prevTourists =>
-      prevTourists.map(t => {
-        const isSameTourist = t.isGroupLeader 
-          ? t.touristId === tourist.touristId 
-          : t.memberId === tourist.memberId;
-        
-        if (isSameTourist) {
-          return { ...t, status: 'warning' };
-        }
-        return t;
-      })
-    );
+    try {
+      // Send alert via backend API
+      await api.post(`/api/tourist/alert/${tourist.touristId}`, {
+        message: 'You have been marked as UNSAFE by authorities. Please contact emergency services immediately or reach out to your hotel/local authorities.',
+        alertType: 'Critical Safety Warning'
+      });
 
-    // Update selectedTourist if it's the same one
-    if (selectedTourist) {
-      setSelectedTourist({ ...selectedTourist, status: 'warning' });
+      // Update tourist status to 'warning' (unsafe)
+      setTourists(prevTourists =>
+        prevTourists.map(t => {
+          const isSameTourist = t.isGroupLeader 
+            ? t.touristId === tourist.touristId 
+            : t.memberId === tourist.memberId;
+          
+          if (isSameTourist) {
+            return { ...t, status: 'warning' };
+          }
+          return t;
+        })
+      );
+
+      // Update selectedTourist if it's the same one
+      if (selectedTourist) {
+        setSelectedTourist({ ...selectedTourist, status: 'warning' });
+      }
+
+      // Success notification
+      toast.success(`⚠️ Alert sent successfully to ${tourist.fullName}!
+
+✅ Email notification sent
+✅ Dashboard alert created
+✅ Status updated: UNSAFE`, {
+        autoClose: 5000
+      });
+    } catch (err) {
+      console.error('Failed to send alert:', err);
+      toast.error(err?.response?.data?.message || 'Failed to send alert');
     }
-
-    // Show success message
-    alert(`Alert sent successfully to ${tourist.fullName}!\n\nStatus updated: UNSAFE\nNotification sent via: Email & SMS`);
   };
 
   useEffect(() => {

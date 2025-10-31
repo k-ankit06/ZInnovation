@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { MapPin, Navigation, AlertTriangle, Shield, Clock, TrendingUp, CheckCircle, Loader } from 'lucide-react';
+import { MapPin, Navigation, AlertTriangle, Shield, Clock, TrendingUp, CheckCircle, Loader, Heart, Cloud, Users, Book } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../lib/apiClient';
+import { toast } from 'react-toastify';
 
 const SafeRoutes = () => {
   const [selectedRoute, setSelectedRoute] = useState(null);
@@ -64,7 +65,7 @@ const SafeRoutes = () => {
 
   const handleSearchRoute = async () => {
     if (!fromLocation || !toLocation) {
-      alert("Please enter both From and To locations.");
+      toast.error("Please enter both From and To locations.");
       return;
     }
 
@@ -73,7 +74,7 @@ const SafeRoutes = () => {
     setSelectedRoute(null);
 
     try {
-      // Backend proxy call (keeps ORS key secure)
+      // Call new comprehensive API
       const { data } = await api.get('/api/routes/safe', {
         params: { from: fromLocation, to: toLocation }
       });
@@ -81,6 +82,7 @@ const SafeRoutes = () => {
       const payload = data?.data || data;
       const distanceKm = payload.distanceKm;
       const durationMin = payload.durationMin;
+      const breakdown = payload.safetyBreakdown || {};
 
       const newRoute = {
         id: Date.now(),
@@ -90,29 +92,66 @@ const SafeRoutes = () => {
         duration: `${durationMin} mins`,
         safetyScore: payload.safetyScore,
         crowdLevel: payload.crowdLevel,
-        route: "Primary Route",
-        highlights: payload.highlights || ["Well connected roads", "Police stations nearby"],
+        recommendedTime: payload.recommendedTime,
+        route: "Recommended Safe Route",
+        transportMode: distanceKm < 5 ? 'Walking/Auto' : distanceKm < 15 ? 'Taxi/Metro' : 'Pre-booked Car',
+        highlights: payload.highlights || ["Safe route calculated"],
         riskFactors: payload.riskFactors || ["None"],
+        
+        // 🎯 COMPREHENSIVE SAFETY BREAKDOWN
+        safetyBreakdown: {
+          generalSafety: breakdown.generalSafety || { score: 75, label: 'General Safety' },
+          healthMedical: breakdown.healthMedical || { score: 70, label: 'Health & Medical', facilities: [] },
+          weather: breakdown.weather || { score: 80, label: 'Weather Conditions', conditions: [] },
+          travelSafety: breakdown.travelSafety || { score: 80, label: 'Travel Safety', tips: [] },
+          culturalAwareness: breakdown.culturalAwareness || { score: 85, label: 'Cultural Awareness', tips: [] }
+        },
+        
+        visitRecommendation: payload.visitRecommendation || {
+          bestTime: 'Daytime (10 AM - 5 PM)',
+          avoid: 'Late night hours',
+          safestDays: 'Weekdays',
+          crowdedDays: 'Weekends'
+        },
+        
         nearbyHelpPoints: [
           { name: 'Nearest Police Station', distance: '0.8 km', type: 'Police' },
           { name: 'City Hospital', distance: '1.5 km', type: 'Medical' },
           { name: 'Tourist Help Desk', distance: '0.5 km', type: 'Information' },
           { name: 'Safe Rest Stop', distance: '1.2 km', type: 'Shelter' }
         ],
+        
         liveUpdates: [
           {
             area: toLocation,
-            status: payload.crowdLevel === 'High' ? 'CAUTION' : 'SAFE',
-            message: payload.crowdLevel === 'High' ? 'High crowd density reported. Stay alert.' : 'No recent incidents reported'
+            status: payload.safetyScore >= 80 ? 'SAFE' : 'CAUTION',
+            message: payload.safetyScore >= 80 
+              ? 'Area is safe for tourists. No recent incidents reported.' 
+              : 'Moderate risk area. Stay alert and follow safety guidelines.'
           },
         ],
-        turnByTurn: payload.turnByTurn || [],
+        
+        turnByTurn: payload.turnByTurn || [
+          `Start from ${fromLocation}`,
+          `Follow recommended route to ${toLocation}`,
+          `Arrive at destination`
+        ],
       };
 
       setSearchedRoute(newRoute);
+      
+      // Show success with safety score
+      if (payload.safetyScore >= 80) {
+        toast.success(`✅ Safe Route Found! Safety Score: ${payload.safetyScore}%`);
+      } else if (payload.safetyScore >= 60) {
+        toast.warning(`⚠️ Moderate Safety Route. Score: ${payload.safetyScore}%`);
+      } else {
+        toast.error(`🚨 High Risk Route! Score: ${payload.safetyScore}%. Consider alternatives.`);
+      }
+      
     } catch (error) {
       console.error("Error fetching route:", error);
-      alert("Something went wrong while fetching the route.");
+      toast.error(error?.response?.data?.message || "Failed to calculate route. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -150,15 +189,165 @@ const SafeRoutes = () => {
         </div>
         <div className="text-right">
           <div className={`px-4 py-2 rounded-full font-bold text-lg mb-1 ${getSafetyColor(route.safetyScore)}`}>{route.safetyScore}%</div>
-          <p className="text-xs text-gray-500">Safety Score</p>
+          <p className="text-xs text-gray-500">Overall Safety</p>
         </div>
       </div>
+      
+      {/* Distance & Duration Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 my-3">
         <div className="bg-gray-50 p-3 rounded-lg"><p className="text-xs text-gray-600 mb-1">Distance</p><p className="font-bold text-gray-900">{route.distance}</p></div>
         <div className="bg-gray-50 p-3 rounded-lg"><p className="text-xs text-gray-600 mb-1">Duration</p><p className="font-bold text-gray-900">{route.duration}</p></div>
         <div className="bg-gray-50 p-3 rounded-lg"><p className="text-xs text-gray-600 mb-1">Crowd Level</p><span className={`px-2 py-1 rounded-full text-xs font-semibold ${getCrowdColor(route.crowdLevel)}`}>{route.crowdLevel}</span></div>
         <div className="bg-gray-50 p-3 rounded-lg"><p className="text-xs text-gray-600 mb-1">Best Time</p><p className="font-bold text-gray-900 text-xs">{route.recommendedTime || '—'}</p></div>
       </div>
+      
+      {/* 🎯 COMPREHENSIVE SAFETY ANALYSIS - Only for searched routes */}
+      {isSearched && route.safetyBreakdown && (
+        <div className="mb-4">
+          <h4 className="font-bold text-gray-900 mb-3 flex items-center">
+            <Shield className="h-5 w-5 mr-2 text-primary-600" />
+            Detailed Safety Analysis
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* General Safety */}
+            <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-blue-600" />
+                  <span className="font-semibold text-blue-900">General Safety</span>
+                </div>
+                <span className={`px-3 py-1 rounded-full font-bold ${getSafetyColor(route.safetyBreakdown.generalSafety.score)}`}>
+                  {route.safetyBreakdown.generalSafety.score}%
+                </span>
+              </div>
+              <div className="w-full bg-blue-200 rounded-full h-2">
+                <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${route.safetyBreakdown.generalSafety.score}%` }}></div>
+              </div>
+            </div>
+            
+            {/* Health & Medical */}
+            <div className="bg-gradient-to-r from-red-50 to-red-100 p-4 rounded-lg border border-red-200">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Heart className="h-5 w-5 text-red-600" />
+                  <span className="font-semibold text-red-900">Health & Medical</span>
+                </div>
+                <span className={`px-3 py-1 rounded-full font-bold ${getSafetyColor(route.safetyBreakdown.healthMedical.score)}`}>
+                  {route.safetyBreakdown.healthMedical.score}%
+                </span>
+              </div>
+              <div className="w-full bg-red-200 rounded-full h-2 mb-2">
+                <div className="bg-red-600 h-2 rounded-full" style={{ width: `${route.safetyBreakdown.healthMedical.score}%` }}></div>
+              </div>
+              {route.safetyBreakdown.healthMedical.facilities?.length > 0 && (
+                <div className="text-xs text-red-800 mt-2">
+                  {route.safetyBreakdown.healthMedical.facilities.map((f, i) => (
+                    <p key={i}>• {f}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            {/* Weather Conditions */}
+            <div className="bg-gradient-to-r from-cyan-50 to-cyan-100 p-4 rounded-lg border border-cyan-200">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Cloud className="h-5 w-5 text-cyan-600" />
+                  <span className="font-semibold text-cyan-900">Weather Safety</span>
+                </div>
+                <span className={`px-3 py-1 rounded-full font-bold ${getSafetyColor(route.safetyBreakdown.weather.score)}`}>
+                  {route.safetyBreakdown.weather.score}%
+                </span>
+              </div>
+              <div className="w-full bg-cyan-200 rounded-full h-2 mb-2">
+                <div className="bg-cyan-600 h-2 rounded-full" style={{ width: `${route.safetyBreakdown.weather.score}%` }}></div>
+              </div>
+              {route.safetyBreakdown.weather.conditions?.length > 0 && (
+                <div className="text-xs text-cyan-800 mt-2">
+                  {route.safetyBreakdown.weather.conditions.map((c, i) => (
+                    <p key={i}>• {c}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            {/* Travel Safety */}
+            <div className="bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Navigation className="h-5 w-5 text-green-600" />
+                  <span className="font-semibold text-green-900">Travel Safety</span>
+                </div>
+                <span className={`px-3 py-1 rounded-full font-bold ${getSafetyColor(route.safetyBreakdown.travelSafety.score)}`}>
+                  {route.safetyBreakdown.travelSafety.score}%
+                </span>
+              </div>
+              <div className="w-full bg-green-200 rounded-full h-2 mb-2">
+                <div className="bg-green-600 h-2 rounded-full" style={{ width: `${route.safetyBreakdown.travelSafety.score}%` }}></div>
+              </div>
+              {route.safetyBreakdown.travelSafety.tips?.length > 0 && (
+                <div className="text-xs text-green-800 mt-2">
+                  {route.safetyBreakdown.travelSafety.tips.map((t, i) => (
+                    <p key={i}>• {t}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            {/* Cultural Awareness */}
+            <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200 md:col-span-2">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Book className="h-5 w-5 text-purple-600" />
+                  <span className="font-semibold text-purple-900">Cultural Awareness</span>
+                </div>
+                <span className={`px-3 py-1 rounded-full font-bold ${getSafetyColor(route.safetyBreakdown.culturalAwareness.score)}`}>
+                  {route.safetyBreakdown.culturalAwareness.score}%
+                </span>
+              </div>
+              <div className="w-full bg-purple-200 rounded-full h-2 mb-3">
+                <div className="bg-purple-600 h-2 rounded-full" style={{ width: `${route.safetyBreakdown.culturalAwareness.score}%` }}></div>
+              </div>
+              {route.safetyBreakdown.culturalAwareness.tips?.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-purple-800">
+                  {route.safetyBreakdown.culturalAwareness.tips.map((t, i) => (
+                    <p key={i} className="bg-white/50 px-2 py-1 rounded">{t}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* When to Visit Recommendations */}
+      {isSearched && route.visitRecommendation && (
+        <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-300 p-4 rounded-lg mb-3">
+          <h4 className="font-bold text-amber-900 mb-3 flex items-center">
+            <Clock className="h-5 w-5 mr-2" />
+            When to Visit - Best Time Recommendations
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="bg-white p-3 rounded-lg">
+              <p className="text-xs text-gray-600 mb-1">✅ Best Time</p>
+              <p className="font-bold text-green-700">{route.visitRecommendation.bestTime}</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg">
+              <p className="text-xs text-gray-600 mb-1">⚠️ Avoid</p>
+              <p className="font-bold text-orange-700">{route.visitRecommendation.avoid}</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg">
+              <p className="text-xs text-gray-600 mb-1">📅 Safest Days</p>
+              <p className="font-bold text-blue-700">{route.visitRecommendation.safestDays}</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg">
+              <p className="text-xs text-gray-600 mb-1">👥 Crowded Days</p>
+              <p className="font-bold text-red-700">{route.visitRecommendation.crowdedDays}</p>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <div className="bg-primary-50 p-3 rounded-lg mb-3">
         <p className="text-sm font-semibold text-primary-900 mb-2">✨ Route Highlights:</p>
         <div className="flex flex-wrap gap-2">{route.highlights.map((h, idx) => (<span key={idx} className="px-2 py-1 bg-white text-primary-700 rounded text-xs font-medium">✓ {h}</span>))}</div>
