@@ -3,10 +3,11 @@ import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/role.js';
 import TouristProfile from '../models/Touristprofile.js';
 import User from '../models/User.js';
+import Alert from '../models/Alert.js';
 import { canonicalizeTourist } from '../utils/hash.js';
 import { asyncWrap } from '../utils/error.js';
 import { v4 as uuid } from 'uuid';
-import { sendTouristProfileCompletedEmail } from '../services/emailService.js';
+import { sendTouristProfileCompletedEmail, sendSafetyAlertEmail } from '../services/emailService.js';
 import { touristBlockchain } from '../blockchain/Blockchain.js';
 
 const router = express.Router();
@@ -191,6 +192,92 @@ router.delete('/cards/:id', requireAuth, requireRole('authority'), asyncWrap(asy
   }
   
   res.json({ ok: true, message: 'Tourist card removed successfully' });
+}));
+
+// 🚨 SEND ALERT TO TOURIST
+router.post('/alert/:touristId', requireAuth, requireRole('authority'), asyncWrap(async (req, res) => {
+  const touristId = req.params.touristId;
+  const { message, alertType } = req.body;
+  
+  // Find tourist profile
+  const profile = await TouristProfile.findOne({ touristId });
+  
+  if (!profile) {
+    return res.status(404).json({ ok: false, message: 'Tourist not found' });
+  }
+  
+  // Find user
+  const user = await User.findById(profile.userId);
+  
+  if (!user) {
+    return res.status(404).json({ ok: false, message: 'User not found' });
+  }
+  
+  // Save alert to database
+  const alert = new Alert({
+    touristId,
+    userId: user._id,
+    message: message || 'You have been marked as UNSAFE by authorities. Please contact emergency services immediately.',
+    alertType: alertType || 'Safety Warning',
+    severity: 'critical',
+    sentBy: req.user.id
+  });
+  
+  await alert.save();
+  
+  // Send dedicated safety alert email
+  try {
+    await sendSafetyAlertEmail({
+      user,
+      profile,
+      message: message || 'You have been marked as UNSAFE by authorities. Please take immediate action and contact emergency services if needed.',
+      alertType: alertType || 'CRITICAL SAFETY WARNING'
+    });
+  } catch (emailErr) {
+    console.error('Email send failed:', emailErr);
+  }
+  
+  res.json({
+    ok: true,
+    message: 'Alert sent successfully',
+    data: {
+      touristId,
+      email: user.email,
+      name: profile.fullName,
+      alertSent: true,
+      timestamp: new Date()
+    }
+  });
+}));
+
+// 📬 GET ALERTS FOR TOURIST
+router.get('/alerts', requireAuth, requireRole('tourist'), asyncWrap(async (req, res) => {
+  const alerts = await Alert.find({ userId: req.user.id })
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+  
+  res.json({
+    ok: true,
+    data: {
+      alerts,
+      unreadCount: alerts.filter(a => !a.isRead).length
+    }
+  });
+}));
+
+// ✅ MARK ALERT AS READ
+router.patch('/alerts/:alertId/read', requireAuth, requireRole('tourist'), asyncWrap(async (req, res) => {
+  const alert = await Alert.findOne({ _id: req.params.alertId, userId: req.user.id });
+  
+  if (!alert) {
+    return res.status(404).json({ ok: false, message: 'Alert not found' });
+  }
+  
+  alert.isRead = true;
+  await alert.save();
+  
+  res.json({ ok: true, message: 'Alert marked as read' });
 }));
 
 

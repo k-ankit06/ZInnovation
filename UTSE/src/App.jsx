@@ -4,7 +4,7 @@ import ProtectedRoute from './components/Auth/ProtectedRoute'
 import Login from './components/Auth/Login'
 import SignUp from './components/Auth/SignUp'
 import SplashScreen from './components/Layout/SplashScreen'
-// Authority Pages
+
 import AuthorityLayout from './components/Layout/AuthorityLayout'
 import AuthorityDashboard from './pages/Authority/Dashboard'
 import TouristMonitoring from './pages/Authority/TouristMonitoring'
@@ -16,7 +16,7 @@ import ResponseTeam from './pages/Authority/ResponseTeam'
 import AuthorityAnalytics from './pages/Authority/Analytics'
 import BlockchainDashboard from './pages/Authority/BlockchainDashboard'
 
-// Tourist Pages
+
 import TouristLayout from './components/Layout/TouristLayout'
 import TouristDashboard from './pages/Tourist/Dashboard'
 import TouristRegistration from './pages/Tourist/Registration'

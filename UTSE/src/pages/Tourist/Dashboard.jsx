@@ -3,6 +3,8 @@ import { Shield, MapPin, AlertTriangle, Phone, QrCode, Bell, Activity, Navigatio
 import { useAuth } from '../../components/Auth/AuthContext'
 import { motion } from 'framer-motion'
 import axios from 'axios'
+import api from '../../lib/apiClient'
+import { toast } from 'react-toastify'
 
 const TouristDashboard = () => {
   const { user } = useAuth()
@@ -20,7 +22,7 @@ const TouristDashboard = () => {
     setTimeout(() => setPanicActive(false), 3000)
   }
 
-  const fetchLocation = () => {
+  const fetchLocation = async () => {
     setLocationLoading(true)
     setLocationError('')
     if (navigator.geolocation) {
@@ -33,81 +35,113 @@ const TouristDashboard = () => {
             const address = response.data.display_name || 'Unknown location'
             setCurrentLocation({ lat, lng, address })
 
+            // 🎲 Generate RANDOM safety score (50-100)
+            const randomScore = Math.floor(Math.random() * 51) + 50 // Random between 50-100
+            
             const lowerAddr = address.toLowerCase()
-            let newScore = 90
             let newHelp = []
             let newAlerts = []
             let newActivity = []
 
-            // ✅ Logic based on area type
+            // Determine area type for help points and alerts
             if (lowerAddr.includes('bazaar') || lowerAddr.includes('market') || lowerAddr.includes('station')) {
-              newScore = 70
               newHelp = [
-                { type: 'Police Booth', name: 'Sadar Bazaar Police Booth', distance: '0.2 km', phone: '100' },
-                { type: 'Medical Aid', name: 'Sadar Clinic', distance: '0.6 km', phone: '102' },
-              ]
-              newAlerts = [
-                { type: 'warning', message: 'Pickpocket alert in local market area. Stay cautious!', time: '5 mins ago' },
-                { type: 'info', message: 'Crowded area detected nearby. Keep your belongings safe.', time: '15 mins ago' },
-              ]
-              newActivity = [
-                { action: 'Visited Local Market', time: '10 mins ago', icon: MapPin },
-                { action: 'Safety Score Adjusted (Moderate)', time: 'Just now', icon: Shield },
+                { type: 'Police Booth', name: 'Local Police Booth', distance: '0.2 km', phone: '100' },
+                { type: 'Medical Aid', name: 'Medical Clinic', distance: '0.6 km', phone: '102' },
               ]
             } else if (lowerAddr.includes('hospital') || lowerAddr.includes('police') || lowerAddr.includes('embassy')) {
-              newScore = 95
               newHelp = [
                 { type: 'Police Station', name: 'Nearby Police HQ', distance: '0.3 km', phone: '100' },
                 { type: 'Hospital', name: 'City Medical Center', distance: '0.8 km', phone: '102' },
               ]
-              newAlerts = [
-                { type: 'success', message: 'You are near a secure area. Safety ensured.', time: '2 mins ago' },
-                { type: 'info', message: 'Emergency services nearby for quick support.', time: '10 mins ago' },
-              ]
-              newActivity = [
-                { action: 'Entered Safe Zone', time: 'Just now', icon: Shield },
-                { action: 'Check-in near Police Station', time: '2 mins ago', icon: MapPin },
-              ]
             } else if (lowerAddr.includes('highway') || lowerAddr.includes('isolated') || lowerAddr.includes('forest')) {
-              newScore = 60
               newHelp = [
-                { type: 'Highway Patrol', name: 'NH Patrol Unit 5', distance: '1.5 km', phone: '1091' },
+                { type: 'Highway Patrol', name: 'Highway Patrol Unit', distance: '1.5 km', phone: '1091' },
                 { type: 'Emergency Stop', name: 'Safe Rest Area', distance: '2.2 km', phone: '108' },
               ]
-              newAlerts = [
-                { type: 'warning', message: 'Low visibility & isolated area detected. Stay alert.', time: '5 mins ago' },
-                { type: 'info', message: 'Avoid travelling alone at night in this area.', time: '15 mins ago' },
-              ]
-              newActivity = [
-                { action: 'Travelling on Highway', time: '10 mins ago', icon: MapPin },
-                { action: 'Safety Score Adjusted (High Risk)', time: 'Just now', icon: Shield },
-              ]
             } else {
-              newScore = 85
               newHelp = [
                 { type: 'Tourist Help', name: 'City Tourist Center', distance: '0.4 km', phone: '1363' },
                 { type: 'Hospital', name: 'Metro Hospital', distance: '1.2 km', phone: '102' },
               ]
+            }
+
+            // 🚨 Check if safety score is below 70 - SEND AUTOMATIC ALERT
+            if (randomScore < 70) {
               newAlerts = [
-                { type: 'success', message: 'You are in a generally safe area.', time: '2 mins ago' },
-                { type: 'info', message: 'Weather normal and visibility clear.', time: '10 mins ago' },
+                { type: 'warning', message: `⚠️ DANGER ZONE! Safety score: ${randomScore}/100. Area is unsafe - please move to a safer location immediately!`, time: 'Just now' },
+                { type: 'warning', message: 'High risk area detected. Authorities have been notified.', time: 'Just now' },
+                { type: 'info', message: 'Avoid travelling alone. Stay in crowded well-lit areas.', time: '1 min ago' },
               ]
               newActivity = [
-                { action: 'Exploring the City', time: '15 mins ago', icon: MapPin },
+                { action: `🚨 Entered High-Risk Area (Score: ${randomScore})`, time: 'Just now', icon: AlertTriangle },
+                { action: 'Auto-Alert Sent to Authorities', time: 'Just now', icon: Bell },
+                { action: 'Location Updated', time: 'Just now', icon: MapPin },
+              ]
+
+              // 🚨 SEND AUTOMATIC ALERT TO AUTHORITIES
+              try {
+                // Get user's tourist profile to get touristId
+                const profileRes = await api.get('/api/tourist/me')
+                const cards = profileRes?.data?.data?.cards || []
+                
+                if (cards.length > 0) {
+                  const touristId = cards[0].touristId
+                  
+                  // Send auto-alert to backend (which will email and save)
+                  await api.post(`/api/tourist/alert/${touristId}`, {
+                    message: `Tourist entered UNSAFE area! Location: ${address}. Safety Score: ${randomScore}/100. Immediate attention required!`,
+                    alertType: 'AUTO-GENERATED HIGH RISK ALERT'
+                  })
+                  
+                  toast.error(`⚠️ WARNING: You are in an UNSAFE area! Safety Score: ${randomScore}/100. Authorities have been automatically notified.`, {
+                    autoClose: 10000,
+                    position: 'top-center'
+                  })
+                }
+              } catch (alertErr) {
+                console.error('Failed to send auto-alert:', alertErr)
+              }
+            } else if (randomScore >= 70 && randomScore < 85) {
+              newAlerts = [
+                { type: 'warning', message: `Moderate risk area. Safety score: ${randomScore}/100. Stay alert and cautious.`, time: 'Just now' },
+                { type: 'info', message: 'Keep your belongings secure and avoid isolated areas.', time: '2 mins ago' },
+              ]
+              newActivity = [
+                { action: `Location Check: Moderate Risk (Score: ${randomScore})`, time: 'Just now', icon: MapPin },
                 { action: 'Safety Score Updated', time: 'Just now', icon: Shield },
+              ]
+            } else {
+              newAlerts = [
+                { type: 'success', message: `✅ Safe area detected! Safety score: ${randomScore}/100. You can travel safely here.`, time: 'Just now' },
+                { type: 'info', message: 'Emergency services nearby for quick support if needed.', time: '5 mins ago' },
+              ]
+              newActivity = [
+                { action: `Entered Safe Zone (Score: ${randomScore})`, time: 'Just now', icon: Shield },
+                { action: 'Location Verified as Safe', time: 'Just now', icon: MapPin },
               ]
             }
 
-            setSafetyScore(newScore)
+            setSafetyScore(randomScore)
             setNearbyHelp(newHelp)
             setSafetyAlerts(newAlerts)
             setRecentActivity(newActivity)
+            
+            // Toast notification for safety score
+            if (randomScore < 70) {
+              toast.error(`🚨 DANGER! Safety Score: ${randomScore}/100`, { autoClose: 8000 })
+            } else if (randomScore >= 85) {
+              toast.success(`✅ Safe Area! Safety Score: ${randomScore}/100`, { autoClose: 3000 })
+            } else {
+              toast.warning(`⚠️ Moderate Risk. Safety Score: ${randomScore}/100`, { autoClose: 5000 })
+            }
           } catch (err) {
             setLocationError('Unable to fetch address. Showing coordinates only.')
             setCurrentLocation({ lat, lng, address: 'Address not available' })
-            setSafetyScore(70)
+            const randomScore = Math.floor(Math.random() * 51) + 50
+            setSafetyScore(randomScore)
             setNearbyHelp([])
-            setSafetyAlerts([{ type: 'warning', message: 'Location not verified. Stay alert.', time: 'Just now' }])
+            setSafetyAlerts([{ type: 'warning', message: `Location not verified. Safety score: ${randomScore}/100. Stay alert.`, time: 'Just now' }])
             setRecentActivity([{ action: 'Location error occurred', time: 'Just now', icon: AlertTriangle }])
           } finally {
             setLocationLoading(false)

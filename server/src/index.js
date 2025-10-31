@@ -21,6 +21,7 @@ import incidentRoutes from './routes/incidents.js';
 import teamsRoutes from './routes/teams.js';
 import analyticsRoutes from './routes/analytics.js';
 import routesProxy from './routes/routesProxy.js';
+import safeRoutesAPI from './routes/routes.js';
 import debugRoutes from './routes/debug.js';
 
 dotenv.config();
@@ -74,7 +75,8 @@ app.use('/api/emergency', emergencyRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/teams', teamsRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/routes', routesProxy);
+app.use('/api/routes', safeRoutesAPI);
+app.use('/api/routesProxy', routesProxy);
 
 // Debug routes (for verifying DB/collections quickly)
 app.use('/api/debug', debugRoutes);
