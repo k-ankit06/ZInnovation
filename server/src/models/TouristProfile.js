@@ -14,7 +14,7 @@ const groupMemberSchema = new mongoose.Schema(
 
 const touristProfileSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', unique: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
     // No inline unique here (we add partial unique index below)
     touristId: { type: String },
@@ -50,6 +50,7 @@ const touristProfileSchema = new mongoose.Schema(
     group: [groupMemberSchema],
 
     isRegistered: { type: Boolean, default: false },
+    isDeleted: { type: Boolean, default: false },
 
     idHash: { type: String, index: true },
     canonicalPayload: mongoose.Schema.Types.Mixed,
@@ -57,6 +58,9 @@ const touristProfileSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Index for userId to fetch all cards for a user
+touristProfileSchema.index({ userId: 1, isDeleted: 1 });
 
 // Enforce uniqueness only when touristId exists
 touristProfileSchema.index(

@@ -1,49 +1,123 @@
 import { useState, useEffect } from 'react'
 import { Search, MapPin, Phone, Mail, Calendar, Globe, Eye, Users, Trash2 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import api from '../../lib/apiClient'
+import { toast } from 'react-toastify'
 
 const TouristMonitoring = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [selectedTourist, setSelectedTourist] = useState(null)
   const [tourists, setTourists] = useState([])
+  const [loading, setLoading] = useState(false)
 
-  const handleDeleteTourist = (touristToDelete) => {
+  // Fetch tourists from backend
+  const fetchTourists = async (searchQuery = '') => {
+    try {
+      setLoading(true)
+      const { data } = await api.get('/api/tourist/cards', { params: { search: searchQuery } })
+      const cards = data?.data || []
+      
+      // Flatten group members for monitoring
+      let flatList = []
+      cards.forEach(card => {
+        // Add main tourist/group leader
+        flatList.push({
+          touristId: card.id,
+          fullName: card.name,
+          country: card.country,
+          passportNumber: card.passport,
+          aadhaarNumber: card.aadhaar,
+          touristType: card.touristType,
+          phone: card.phone,
+          email: card.email,
+          emergencyContactName: card.emergencyContactName,
+          emergencyContactPhone: card.emergencyContact,
+          checkInDate: card.checkIn,
+          checkOutDate: card.checkOut,
+          hotelName: card.hotelName,
+          hotelAddress: card.hotelAddress,
+          currentLocation: card.currentLocation || card.hotelName || 'Not specified',
+          status: card.status === 'Active' ? 'safe' : 'warning',
+          safetyScore: card.safetyScore || Math.floor(Math.random() * 31) + 70,
+          verified: card.verified,
+          isGroupLeader: (card.group && card.group.length > 0),
+          groupSize: card.group ? card.group.length : 0,
+          group: card.group || []
+        })
+        
+        // Add group members
+        if (card.group && card.group.length > 0) {
+          card.group.forEach(member => {
+            flatList.push({
+              memberId: member.memberId,
+              fullName: member.fullName,
+              touristType: member.touristType,
+              passportNumber: member.passportNumber,
+              aadhaarNumber: member.aadhaarNumber,
+              bloodGroup: member.bloodGroup,
+              phone: card.phone,
+              email: card.email,
+              country: card.country,
+              checkInDate: card.checkIn,
+              checkOutDate: card.checkOut,
+              emergencyContactPhone: card.emergencyContact,
+              currentLocation: card.currentLocation || card.hotelName || 'Not specified',
+              status: 'safe',
+              safetyScore: Math.floor(Math.random() * 31) + 70,
+              isGroupLeader: false,
+              leaderId: card.id,
+              leaderName: card.name
+            })
+          })
+        }
+      })
+      
+      setTourists(flatList)
+    } catch (err) {
+      console.error('Failed to fetch tourists:', err)
+      toast.error('Failed to load tourist data')
+      setTourists([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteTourist = async (touristToDelete) => {
     const confirmDelete = window.confirm(`Are you sure you want to delete ${touristToDelete.fullName}?`);
     if (!confirmDelete) return;
 
-    const storedData = localStorage.getItem('allTourists');
-    const allTouristGroups = storedData ? JSON.parse(storedData) : [];
-
-    let updatedGroups;
-    if (touristToDelete.isGroupLeader) {
-      // If deleting a group leader, remove the entire group
-      updatedGroups = allTouristGroups.filter(group => group.touristId !== touristToDelete.touristId);
-    } else {
-      // If deleting a member, remove them from their group
-      updatedGroups = allTouristGroups.map(group => {
-        if (group.touristId === touristToDelete.leaderId) {
-          return {
-            ...group,
-            group: group.group.filter(member => member.memberId !== touristToDelete.memberId)
-          };
-        }
-        return group;
-      });
+    try {
+      // Delete from backend
+      const idToDelete = touristToDelete.touristId || touristToDelete.leaderId
+      await api.delete(`/api/tourist/cards/${encodeURIComponent(idToDelete)}`);
+      
+      // Update local state
+      if (touristToDelete.isGroupLeader) {
+        // Remove group leader and all members
+        setTourists(prevTourists => 
+          prevTourists.filter(t => 
+            t.touristId !== touristToDelete.touristId && 
+            t.leaderId !== touristToDelete.touristId
+          )
+        );
+      } else {
+        // Remove only the member
+        setTourists(prevTourists => 
+          prevTourists.filter(t => t.memberId !== touristToDelete.memberId)
+        );
+      }
+      
+      // Notify other tabs
+      try {
+        localStorage.setItem('removedTouristCard', String(idToDelete))
+        window.dispatchEvent(new CustomEvent('removedTouristCard', { detail: { id: idToDelete } }))
+      } catch (e) { /* ignore */ }
+      
+      toast.success('Tourist deleted successfully')
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to delete tourist')
     }
-
-    localStorage.setItem('allTourists', JSON.stringify(updatedGroups));
-
-    // Update the state to remove the tourist and their group members if they're a leader
-    setTourists(prevTourists => 
-      prevTourists.filter(t => {
-        if (touristToDelete.isGroupLeader) {
-          return t.touristId !== touristToDelete.touristId && t.leaderId !== touristToDelete.touristId;
-        } else {
-          return t.memberId !== touristToDelete.memberId;
-        }
-      })
-    );
   };
 
   const handleSendAlert = (tourist) => {
@@ -74,40 +148,51 @@ const TouristMonitoring = () => {
   };
 
   useEffect(() => {
-    const storedData = localStorage.getItem('allTourists');
-    const allTouristGroups = storedData ? JSON.parse(storedData) : [];
-    
-    let flatTouristList = [];
-    allTouristGroups.forEach(group => {
-      if (!group.group) {
-        group.group = [];
-      }
-      
-      flatTouristList.push({
-        ...group,
-        isGroupLeader: true,
-        groupSize: group.group.length
-      });
-      
-      if (group.group.length > 0) {
-        group.group.forEach(member => {
-          flatTouristList.push({
-            ...member,
-            isGroupLeader: false,
-            leaderId: group.touristId,
-            leaderName: group.fullName,
-          });
-        });
-      }
-    });
+    fetchTourists('')
+  }, [])
 
-    setTourists(flatTouristList.map(t => ({
-      ...t,
-      status: 'safe',
-      safetyScore: Math.floor(Math.random() * 31) + 70,
-      currentLocation: 'Taj Mahal, Agra'
-    })));
-  }, []);
+  // Listen for new tourist registrations
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (!e) return
+      if (e.key === 'newTouristCard' && e.newValue) {
+        try {
+          const card = JSON.parse(e.newValue)
+          if (card?.id) fetchTourists('')
+        } catch { /* ignore */ }
+      }
+      if (e.key === 'removedTouristCard' && e.newValue) {
+        fetchTourists('')
+      }
+    }
+
+    const handleCustomNew = (e) => {
+      const card = e?.detail
+      if (card?.id) fetchTourists('')
+    }
+
+    const handleCustomRemoved = (e) => {
+      fetchTourists('')
+    }
+
+    window.addEventListener('storage', handleStorage)
+    window.addEventListener('newTouristCard', handleCustomNew)
+    window.addEventListener('removedTouristCard', handleCustomRemoved)
+
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener('newTouristCard', handleCustomNew)
+      window.removeEventListener('removedTouristCard', handleCustomRemoved)
+    }
+  }, [])
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchTourists(searchTerm)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
 
   const filteredTourists = tourists.filter(tourist => {
     const searchLower = searchTerm.toLowerCase();
@@ -135,6 +220,7 @@ const TouristMonitoring = () => {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input type="text" placeholder="Search by name, passport, or country..." className="input-field pl-10" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
+          {loading && <p className="text-sm text-gray-500 mt-2">Loading...</p>}
           <div className="flex gap-2">
             <button onClick={() => setFilterStatus('all')} className={`px-4 py-2 rounded-lg font-medium transition-colors ${filterStatus === 'all' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>All ({tourists.length})</button>
             <button onClick={() => setFilterStatus('safe')} className={`px-4 py-2 rounded-lg font-medium transition-colors ${filterStatus === 'safe' ? 'bg-success-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>Safe</button>

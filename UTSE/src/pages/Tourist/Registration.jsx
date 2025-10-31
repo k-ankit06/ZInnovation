@@ -105,6 +105,34 @@ const TouristRegistration = () => {
     try {
       // If we are currently adding a group member, don't call backend yet.
       if (isAddingMember) {
+        // Validate that member has different ID than leader and other members
+        const newMemberPassport = formData.passportNumber;
+        const newMemberAadhaar = formData.aadhaarNumber;
+        
+        // Check against leader's ID
+        const leaderData = JSON.parse(localStorage.getItem('touristData') || '{}');
+        const leaderPassport = leaderData.passportNumber;
+        const leaderAadhaar = leaderData.aadhaarNumber;
+        
+        if ((newMemberPassport && newMemberPassport === leaderPassport) || 
+            (newMemberAadhaar && newMemberAadhaar === leaderAadhaar)) {
+          setError('Each family member must have a unique Passport or Aadhaar number. This ID matches the group leader.');
+          toast.error('Duplicate ID detected!');
+          return;
+        }
+        
+        // Check against other members
+        const duplicateMember = groupMembers.find(m => 
+          (newMemberPassport && m.passportNumber === newMemberPassport) ||
+          (newMemberAadhaar && m.aadhaarNumber === newMemberAadhaar)
+        );
+        
+        if (duplicateMember) {
+          setError('Each family member must have a unique Passport or Aadhaar number. This ID is already used.');
+          toast.error('Duplicate ID detected!');
+          return;
+        }
+        
         const newMember = { ...formData, memberId: `MEM-${Date.now()}` }
         setGroupMembers((prev) => [...prev, newMember])
         toast.success(`${newMember.fullName || 'Member'} added to your group`)
@@ -132,6 +160,32 @@ const TouristRegistration = () => {
       localStorage.setItem('touristData', JSON.stringify(finalData))
       localStorage.removeItem('touristPrefill')
 
+      // Notify SmartIDSystem and TouristMonitoring about new card
+      const newCard = {
+        id: payload.touristId,
+        name: formData.fullName,
+        country: formData.country,
+        passport: formData.passportNumber,
+        aadhaar: formData.aadhaarNumber,
+        touristType: formData.touristType,
+        phone: formData.phone,
+        email: formData.email,
+        emergencyContactName: formData.emergencyContactName,
+        emergencyContact: formData.emergencyContactPhone,
+        checkIn: formData.checkInDate,
+        checkOut: formData.checkOutDate,
+        hotelName: formData.hotelName,
+        hotelAddress: formData.hotelAddress,
+        group: groupMembers,
+        status: 'Active',
+        verified: true
+      }
+      
+      try {
+        localStorage.setItem('newTouristCard', JSON.stringify(newCard))
+        window.dispatchEvent(new CustomEvent('newTouristCard', { detail: newCard }))
+      } catch (e) { /* ignore */ }
+
       toast.success('Registration completed!')
       navigate('/tourist/my-card')
     } catch (e) {
@@ -155,9 +209,17 @@ const TouristRegistration = () => {
   if (user?.isRegistered) {
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card text-center">
-        <h2 className="text-2xl font-bold text-success-700">You are already registered!</h2>
-        <p className="text-gray-600 mt-2">You can view your Smart Tourist Card.</p>
-        <Link to="/tourist/my-card" className="btn-primary mt-4">View My Card</Link>
+        <h2 className="text-2xl font-bold text-success-700">Welcome Back!</h2>
+        <p className="text-gray-600 mt-2">You already have tourist cards. You can create a new card or view your existing cards.</p>
+        <div className="flex flex-col sm:flex-row gap-3 mt-6 justify-center">
+          <Link to="/tourist/my-card" className="px-6 py-3 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700">View My Cards</Link>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-6 py-3 bg-success-600 text-white rounded-lg font-semibold hover:bg-success-700"
+          >
+            Create New Card
+          </button>
+        </div>
       </motion.div>
     )
   }
@@ -166,10 +228,12 @@ const TouristRegistration = () => {
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto">
       <div className="card">
         <motion.h2 initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="text-3xl font-bold text-gray-900 mb-2">
-          {isAddingMember ? 'Add Group Member' : 'Tourist Registration'}
+          {isAddingMember ? `Add Family Member ${groupMembers.length > 0 ? `(${groupMembers.length + 1})` : ''}` : 'Tourist Registration'}
         </motion.h2>
         <p className="text-gray-600">
-          {isAddingMember ? `Adding member ${groupMembers.length + 1} to your group.` : 'Complete your registration to get your Smart Tourist Card.'}
+          {isAddingMember 
+            ? `Fill in details for family member ${groupMembers.length + 1}. Each member must have a unique Passport/Aadhaar.` 
+            : 'Complete your registration to get your Smart Tourist Card. You can register alone or add family members.'}
         </p>
 
         {/* Stepper */}
@@ -465,28 +529,42 @@ const TouristRegistration = () => {
         {/* Completion screen (group actions) */}
         {step === 5 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-8">
-            <h2 className="text-2xl font-bold text-success-700">Registration Complete!</h2>
-            <p className="text-gray-600 my-4">You can now add family members or finish and view your card.</p>
+            <h2 className="text-2xl font-bold text-success-700">Member Added Successfully!</h2>
+            <p className="text-gray-600 my-4">You can add more family members or finish to complete registration.</p>
 
             {groupMembers.length > 0 && (
               <div className="mb-6 text-left bg-gray-50 p-4 rounded-lg">
-                <h3 className="font-bold mb-2">Group Members Added ({groupMembers.length}):</h3>
-                <ul className="list-disc list-inside">
-                  {groupMembers.map((m) => (
-                    <li key={m.memberId}>
-                      {m.fullName} ({m.passportNumber || m.aadhaarNumber || 'ID N/A'})
-                    </li>
+                <h3 className="font-bold mb-2 text-primary-700">👨‍👩‍👧‍👦 Group Members Added ({groupMembers.length}):</h3>
+                <div className="space-y-2">
+                  {groupMembers.map((m, idx) => (
+                    <div key={m.memberId} className="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200">
+                      <div>
+                        <p className="font-semibold text-gray-800">{idx + 1}. {m.fullName}</p>
+                        <p className="text-sm text-gray-600">
+                          {m.touristType === 'domestic' 
+                            ? `Aadhaar: ${m.aadhaarNumber || 'N/A'}` 
+                            : `Passport: ${m.passportNumber || 'N/A'}`}
+                        </p>
+                      </div>
+                      <span className="text-xs bg-success-100 text-success-700 px-3 py-1 rounded-full font-medium">✓ Added</span>
+                    </div>
                   ))}
-                </ul>
+                </div>
               </div>
             )}
+
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 text-left">
+              <p className="text-sm text-blue-800">
+                <strong>Note:</strong> Each family member must have a unique Passport or Aadhaar number different from yours and other members.
+              </p>
+            </div>
 
             <div className="flex flex-col md:flex-row gap-4">
               <button onClick={startNewMemberRegistration} className="flex-1 btn-primary">
                 <Users className="inline h-4 w-4 mr-2" />
-                Add a Family Member
+                Add Another Family Member
               </button>
-              <button onClick={finishGroupRegistration} className="flex-1 bg-success-600 text-white px-6 py-3 rounded-lg font-semibold">
+              <button onClick={finishGroupRegistration} className="flex-1 bg-success-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-success-700 transition-colors">
                 Finish & View Card
               </button>
             </div>

@@ -19,8 +19,9 @@ router.post('/register', requireAuth, requireRole('tourist'), asyncWrap(async (r
   if (!user) return res.status(404).json({ ok: false, message: 'User not found' });
 
   const body = req.body || {};
-  let profile = await TouristProfile.findOne({ userId: user._id });
-  if (!profile) profile = new TouristProfile({ userId: user._id });
+  
+  // Create a NEW profile each time (multi-card support)
+  const profile = new TouristProfile({ userId: user._id });
 
   Object.assign(profile, {
     fullName: body.fullName,
@@ -47,10 +48,10 @@ router.post('/register', requireAuth, requireRole('tourist'), asyncWrap(async (r
     allergies: body.allergies,
     travelInsurance: body.travelInsurance,
     insuranceProvider: body.insuranceProvider,
-    group: Array.isArray(body.group) ? body.group : profile.group || []
+    group: Array.isArray(body.group) ? body.group : []
   });
 
-  if (!profile.touristId) profile.touristId = genTouristId();
+  profile.touristId = genTouristId();
 
   const { canonical, idHash } = canonicalizeTourist({
     fullName: profile.fullName,
@@ -61,7 +62,7 @@ router.post('/register', requireAuth, requireRole('tourist'), asyncWrap(async (r
     passportNumber: profile.passportNumber,
     aadhaarNumber: profile.aadhaarNumber,
     dateOfBirth: profile.dateOfBirth
-  }, profile?.canonicalPayload?.nonce);
+  });
 
   profile.canonicalPayload = canonical;
   profile.idHash = idHash;
@@ -81,10 +82,91 @@ router.post('/register', requireAuth, requireRole('tourist'), asyncWrap(async (r
   });
 }));
 
+// Get all cards for logged-in tourist
 router.get('/me', requireAuth, requireRole('tourist'), asyncWrap(async (req, res) => {
-  const prof = await TouristProfile.findOne({ userId: req.user.id }).lean();
-  if (!prof) return res.json({ ok: true, data: { isRegistered: false } });
-  res.json({ ok: true, data: { ...prof, id: prof._id } });
+  const profiles = await TouristProfile.find({ 
+    userId: req.user.id, 
+    isDeleted: false 
+  }).lean().sort({ createdAt: -1 });
+  
+  if (!profiles || profiles.length === 0) {
+    return res.json({ ok: true, data: { cards: [], isRegistered: false } });
+  }
+  
+  const cards = profiles.map(p => ({ ...p, id: p._id }));
+  res.json({ ok: true, data: { cards, isRegistered: true } });
+}));
+
+// Delete a specific card for the tourist
+router.delete('/me/:touristId', requireAuth, requireRole('tourist'), asyncWrap(async (req, res) => {
+  const touristId = req.params.touristId;
+  const profile = await TouristProfile.findOne({ 
+    touristId, 
+    userId: req.user.id 
+  });
+  
+  if (!profile) {
+    return res.status(404).json({ ok: false, message: 'Card not found' });
+  }
+  
+  // Soft delete
+  profile.isDeleted = true;
+  await profile.save();
+  
+  res.json({ ok: true, message: 'Card deleted successfully' });
+}));
+
+// Get all tourist cards (for authority)
+router.get('/cards', requireAuth, requireRole('authority'), asyncWrap(async (req, res) => {
+  const search = req.query.search || '';
+  const query = {};
+  
+  if (search) {
+    query.$or = [
+      { fullName: { $regex: search, $options: 'i' } },
+      { touristId: { $regex: search, $options: 'i' } },
+      { passportNumber: { $regex: search, $options: 'i' } },
+      { aadhaarNumber: { $regex: search, $options: 'i' } },
+      { email: { $regex: search, $options: 'i' } }
+    ];
+  }
+  
+  const profiles = await TouristProfile.find(query).lean();
+  const cards = profiles.map(p => ({
+    id: p.touristId,
+    name: p.fullName,
+    country: p.country,
+    passport: p.passportNumber,
+    aadhaar: p.aadhaarNumber,
+    touristType: p.touristType,
+    phone: p.phone,
+    email: p.email,
+    emergencyContactName: p.emergencyContactName,
+    emergencyContact: p.emergencyContactPhone,
+    checkIn: p.checkInDate,
+    checkOut: p.checkOutDate,
+    hotelName: p.hotelName,
+    hotelAddress: p.hotelAddress,
+    group: p.group || [],
+    status: 'Active',
+    verified: true,
+    currentLocation: p.hotelName || 'Not specified',
+    safetyScore: Math.floor(Math.random() * 31) + 70
+  }));
+  
+  res.json({ ok: true, data: cards });
+}));
+
+// Delete tourist card (for authority)
+router.delete('/cards/:id', requireAuth, requireRole('authority'), asyncWrap(async (req, res) => {
+  const touristId = req.params.id;
+  const result = await TouristProfile.findOneAndDelete({ touristId });
+  
+  if (!result) {
+    return res.status(404).json({ ok: false, message: 'Tourist not found' });
+  }
+  
+  res.json({ ok: true, message: 'Tourist card removed successfully' });
 }));
 
 export default router;

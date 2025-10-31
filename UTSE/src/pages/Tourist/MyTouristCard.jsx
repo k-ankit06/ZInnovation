@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Download, QrCode, CheckCircle, Users } from 'lucide-react';
+import { Download, QrCode, CheckCircle, Users, Plus, Trash2, Calendar } from 'lucide-react';
 import QRCodeReact from 'qrcode.react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../components/Auth/AuthContext';
@@ -7,61 +7,111 @@ import api from '../../lib/apiClient';
 import { toast } from 'react-toastify';
 
 const MyTouristCard = () => {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const navigate = useNavigate();
-  const [profile, setProfile] = useState(null);
+  const [cards, setCards] = useState([]);
+  const [selectedCard, setSelectedCard] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch tourist profile from backend
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const { data } = await api.get('/api/tourist/me');
-        if (mounted) setProfile(data?.data || null);
-      } catch (e) {
-        // Silent fallback to localStorage if API fails
-      } finally {
-        if (mounted) setLoading(false);
+  // Fetch all tourist cards from backend
+  const fetchCards = async () => {
+    try {
+      setLoading(true);
+      const { data } = await api.get('/api/tourist/me');
+      const cardsList = data?.data?.cards || [];
+      setCards(cardsList);
+      
+      // Auto-select the most recent card if none selected
+      if (cardsList.length > 0 && !selectedCard) {
+        setSelectedCard(cardsList[0]);
       }
-    })();
-    return () => { mounted = false; };
+    } catch (e) {
+      console.error('Failed to fetch cards:', e);
+      toast.error('Failed to load tourist cards');
+      setCards([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCards();
   }, []);
 
-  // Local fallback
-  const local = JSON.parse(localStorage.getItem('touristData') || '{}');
+  // Delete a card
+  const handleDeleteCard = async (touristId) => {
+    if (!touristId) return;
+    
+    const confirm = window.confirm('Are you sure you want to delete this tourist card? This action cannot be undone.');
+    if (!confirm) return;
 
-  // Prefer server profile → then user minimal → then local storage
-  const card = profile || (user?.isRegistered ? { touristId: user?.touristId, fullName: user?.name, country: user?.country } : local);
+    try {
+      await api.delete(`/api/tourist/me/${encodeURIComponent(touristId)}`);
+      
+      // Remove from local state
+      const updatedCards = cards.filter(c => c.touristId !== touristId);
+      setCards(updatedCards);
+      
+      // If deleted card was selected, select another one
+      if (selectedCard?.touristId === touristId) {
+        setSelectedCard(updatedCards[0] || null);
+      }
+      
+      // Update user registration status if no cards left
+      if (updatedCards.length === 0) {
+        updateUser({ ...user, isRegistered: false });
+      }
+      
+      toast.success('Card deleted successfully');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to delete card');
+    }
+  };
 
-  if (!loading && (!card || !card.touristId)) {
+  if (loading) {
     return (
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <div className="card text-center">
-          <QrCode className="h-24 w-24 text-gray-300 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Tourist Card Found</h2>
-          <p className="text-gray-600 mb-6">Please complete your registration to get your Smart Tourist Card</p>
-          <Link to="/tourist/registration" className="btn-primary">Complete Registration</Link>
+          <p className="text-gray-600">Loading your cards...</p>
         </div>
       </div>
     );
   }
 
+  if (cards.length === 0) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <div className="card text-center">
+          <QrCode className="h-24 w-24 text-gray-300 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Tourist Cards Found</h2>
+          <p className="text-gray-600 mb-6">You haven't created any tourist cards yet. Create your first card to get started!</p>
+          <Link to="/tourist/registration" className="btn-primary">
+            <Plus className="inline h-5 w-5 mr-2" />
+            Create New Card
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const card = selectedCard;
+  if (!card) return null;
+
   const touristType = (card?.touristType || '').toLowerCase();
   const isDomestic = touristType === 'domestic';
   const idLabel = isDomestic ? 'Aadhaar' : 'Passport';
   const idNumber = isDomestic
-    ? (card?.aadhaarNumber || local?.aadhaarNumber)
-    : (card?.passportNumber || local?.passportNumber);
+    ? card?.aadhaarNumber
+    : card?.passportNumber;
 
-  const country = card?.country || local?.country || '';
-  const name = card?.fullName || user?.name || local?.fullName || '';
-  const touristId = card?.touristId || user?.touristId || local?.touristId;
+  const country = card?.country || '';
+  const name = card?.fullName || user?.name || '';
+  const touristId = card?.touristId || user?.touristId;
   const verificationUrl = `${window.location.origin}/verify/${touristId}`;
 
-  const emName = card?.emergencyContactName || local?.emergencyContactName || '';
-  const emPhone = card?.emergencyContactPhone || local?.emergencyContactPhone || '';
-  const emRel = card?.emergencyContactRelation || local?.emergencyContactRelation || '';
+  const emName = card?.emergencyContactName || '';
+  const emPhone = card?.emergencyContactPhone || '';
+  const emRel = card?.emergencyContactRelation || '';
 
   const downloadQR = () => {
     try {
@@ -81,14 +131,74 @@ const MyTouristCard = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold text-gray-900">
-          {isGroupRegistration ? 'My Group Tourist Card' : 'My Smart Tourist Card'}
-        </h2>
-        <p className="text-gray-600 mt-1">Your digital identity for safe travel in India</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900">My Tourist Cards</h2>
+          <p className="text-gray-600 mt-1">Manage all your digital tourist cards ({cards.length} card{cards.length !== 1 ? 's' : ''})</p>
+        </div>
+        <Link to="/tourist/registration" className="btn-primary">
+          <Plus className="inline h-5 w-5 mr-2" />
+          Add New Card
+        </Link>
       </div>
 
+      {/* Cards List/Selector */}
+      {cards.length > 1 && (
+        <div className="card">
+          <h3 className="font-bold text-lg mb-3">Your Cards</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {cards.map((c) => {
+              const isSelected = selectedCard?.touristId === c.touristId;
+              const cType = (c?.touristType || '').toLowerCase();
+              const cIsDomestic = cType === 'domestic';
+              const cIdNumber = cIsDomestic ? c.aadhaarNumber : c.passportNumber;
+              
+              return (
+                <div
+                  key={c.touristId}
+                  onClick={() => setSelectedCard(c)}
+                  className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                    isSelected 
+                      ? 'border-primary-500 bg-primary-50' 
+                      : 'border-gray-200 hover:border-primary-300 bg-white'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <p className="font-bold text-gray-900">{c.fullName}</p>
+                      <p className="text-sm text-gray-600 font-mono">{c.touristId}</p>
+                      <p className="text-xs text-gray-500 mt-1">{cIsDomestic ? 'Aadhaar' : 'Passport'}: {cIdNumber || 'N/A'}</p>
+                      {c.group && c.group.length > 0 && (
+                        <p className="text-xs text-primary-600 mt-1 flex items-center">
+                          <Users className="h-3 w-3 mr-1" />
+                          {c.group.length} member{c.group.length !== 1 ? 's' : ''}
+                        </p>
+                      )}
+                    </div>
+                    {isSelected && <CheckCircle className="h-5 w-5 text-primary-600" />}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Selected Card Display */}
       <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold">
+            {isGroupRegistration ? 'Group Tourist Card' : 'Smart Tourist Card'}
+          </h3>
+          <button
+            onClick={() => handleDeleteCard(card.touristId)}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete Card
+          </button>
+        </div>
+
         <div className="bg-gradient-to-br from-primary-600 to-primary-800 rounded-2xl p-8 text-white shadow-2xl">
           <div className="flex items-start justify-between mb-6">
             <div><h3 className="text-3xl font-bold">Smart Tourist Card</h3></div>
@@ -119,7 +229,7 @@ const MyTouristCard = () => {
                   <p className="font-semibold text-lg">{emName || 'N/A'}</p>
                   <p className="text-danger-100 text-sm">{emRel || 'Relation: N/A'}</p>
                 </div>
-                <p className="font-mono font-bold text-xl">{emPhone || 'N/A'}</p>
+                <p className="font-mono font-bold text-xl">{emPhone || card?.emergencyContact || 'N/A'}</p>
               </div>
             ) : (
               <p className="text-danger-100">Not provided</p>
@@ -135,6 +245,11 @@ const MyTouristCard = () => {
               <Download className="inline h-4 w-4 mr-2" />
               Download QR
             </button>
+            <div className="flex-1"></div>
+            <div className="text-white/80 text-sm flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Created: {new Date(card.createdAt).toLocaleDateString()}
+            </div>
           </div>
         </div>
       </div>
