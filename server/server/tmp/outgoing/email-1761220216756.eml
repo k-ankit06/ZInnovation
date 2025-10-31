@@ -1,0 +1,22 @@
+From: "Tourist Safety System" <kumar.ak22ji@gmail.com>
+
+To: kumar.ak22ji@gmail.com
+
+Subject: New Tourist Registration Alert
+
+Date: 2025-10-23T11:50:16.751Z
+
+
+
+
+      <h1>New Tourist Registration</h1>
+      <p>A new tourist has registered on the platform. Details:</p>
+      <ul>
+        <li><strong>Name:</strong> Ankit Kumar</li>
+        <li><strong>Email:</strong> chanda.devi0603@gmail.com</li>
+        <li><strong>Role:</strong> tourist</li>
+        <li><strong>Tourist Type:</strong> domestic</li>
+        <li><strong>Country:</strong> India</li>
+      </ul>
+      <p><a href="http://localhost:3000/authority/dashboard">Open Authority Dashboard</a></p>
+    
